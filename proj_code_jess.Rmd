@@ -1,0 +1,78 @@
+---
+title: "Project code"
+author: "Jessica Hin (008515095)"
+date: "2023-06-04"
+output: word_document
+---
+
+```{r setup}
+setwd('C:/Users/jessh/Documents/MS Applied Data Science/ADS503 Applied Predictive Modeling/Project')
+data <- read.csv('risk_factors_cervical_cancer.csv')
+
+library(MASS)
+library(dplyr)
+library(caret)
+library(ggplot2)
+library(reshape2)
+```
+
+```{r preprocessing}
+# checking for zero variance predictors
+
+# Hinselmann test shows up in the results, but the other three tests do not (Schiller,Cytology,Biopsy)
+data_nearzero <- as.integer(nearZeroVar(data))
+
+# remove IUD column
+#data <- data[,IUD] 
+
+# checking for missing values
+data_miss <- sapply(data, function(x) sum(is.na(x)))
+
+# data has question marks in data, finding out which rows have columns with question marks in it
+q_idx <- as.data.frame(unlist(which(data == "?", arr.ind = TRUE)))
+rows <- unique(unlist(q_idx[1]))
+
+# subsetting the data set with the rows that have columns with question marks in it
+data_test <- data[c(rows),]
+
+# data frame with stds included
+data_wstd <- data
+
+# subbing in the values with question marks as NAs
+data[data == "?"] <- NA
+
+# checking for missing values again
+data_miss <- sapply(data, function(x) sum(is.na(x)))
+
+# removing the std cols
+data <- subset(data, select = -c(STDs..Time.since.first.diagnosis, STDs..Time.since.last.diagnosis))
+sapply(data, function(x) sum(is.na(x)))
+
+# changing character variables to integers
+data[,2:27] <- sapply(data[,2:27], as.integer)
+
+# Changing certain variables to factors
+#data[,c(5,8,10,12,14:25,27:34)] <- sapply(data[,c(5,8,10,12,14:25,27:34)], as.factor)
+```
+
+```{r EDA, fig.height=14, fig.width=14}
+
+# Histograms of data
+library(Hmisc)
+hist.data.frame(data[1:8], n.unique=1)
+hist.data.frame(data[9:17], n.unique=1)
+hist.data.frame(data[18:26], n.unique=1)
+hist.data.frame(data[27:34], n.unique=1)
+
+# Heatmap of the variables
+#heatmap(as.matrix(data))
+#melt(cor(data))
+#ggplot(melt(cor(data)),aes(x = Var1, y = Var2),
+#       fill = value) + geom_tile()
+
+# correlation plot for the variables
+corrplot::corrplot(cor(data))
+library(psych)
+tetrachoric(data[,-c(1:4,6:7,9,11,13,26)])
+```
+
