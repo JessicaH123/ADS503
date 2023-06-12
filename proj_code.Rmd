@@ -2,11 +2,13 @@
 title: "Project code"
 author: "Jessica Hin (008515095)"
 date: "2023-06-04"
-output: word_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup}
-setwd('C:/Users/jessh/Documents/MS Applied Data Science/ADS503 Applied Predictive Modeling/Project')
+setwd('/Users/stephenreagin/Desktop/ADS503_project/ADS503')
 data <- read.csv('risk_factors_cervical_cancer.csv')
 
 library(MASS)
