@@ -1,0 +1,220 @@
+---
+title: "Project code"
+author: "Jessica Hin (008515095)"
+date: "2023-06-04"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup}
+setwd('/Users/jessh/ADS503')
+data <- read.csv('risk_factors_cervical_cancer.csv')
+
+library(MASS)
+library(dplyr)
+library(caret)
+library(ggplot2)
+library(reshape2)
+```
+
+```{r preprocessing pt 1}
+# checking for zero variance predictors
+# Hinselmann test shows up in the results, but the other three tests do not (Schiller,Cytology,Biopsy)
+data_nearzero <- data[,as.integer(nearZeroVar(data))]
+
+# remove IUD column
+#data <- data[,IUD] 
+
+
+# data frame with stds included
+data_wstd <- data
+
+# checking for missing values
+data_miss <- sapply(data, function(x) sum(is.na(x)))
+
+
+# subbing in the values with question marks as NAs
+data[data == "?"] <- NA
+
+# checking for missing values again
+data_miss <- sapply(data, function(x) sum(is.na(x)))
+
+# removing the std time cols
+data <- subset(data, select = -c(STDs..Time.since.first.diagnosis, STDs..Time.since.last.diagnosis))
+sapply(data, function(x) sum(is.na(x)))
+
+# changing character variables to integers
+data[,2:27] <- sapply(data[,2:27], as.integer)
+
+# Changing response to factors
+
+#data[,c(5,8,10,12,14:25,27:34)][data[,c(5,8,10,12,14:25,27:34)] == 0]  <- "Negative"
+#data[,c(5,8,10,12,14:25,27:34)][data[,c(5,8,10,12,14:25,27:34)] == 1] <- "Positive"
+data[,c(31:34)][data[,c(31:34)] == 0] <- "Negative"
+data[,c(31:34)][data[,c(31:34)] == 1] <- "Positive"
+data$Hinselmann <- as.factor(data$Hinselmann)
+data$Schiller <- as.factor(data$Schiller)
+data$Citology <- as.factor(data$Citology)
+data$Biopsy <- as.factor(data$Biopsy)
+```
+
+```{r preprocessing imputation}
+# creating a mode function
+Mode <- function(x, na.rm = FALSE) {
+  if(na.rm){
+    x = x[!is.na(x)]
+  }
+
+  ux <- unique(x)
+  return(ux[which.max(tabulate(match(x, ux)))])
+}
+
+# changing the hormonal and IUD into one variable, birth control
+data$Birth.control <- as.integer(as.integer(data$Hormonal.Contraceptives) | as.integer(data$IUD))
+
+# removing the IUD and hormonal contraceptive variable
+data = subset(data, select = -c(Hormonal.Contraceptives, IUD, STDs.cervical.condylomatosis,STDs.vaginal.condylomatosis,STDs.vulvo.perineal.condylomatosis, STDs.AIDS))
+
+# imputing the missing data
+data$Number.of.sexual.partners[is.na(data$Number.of.sexual.partners)] <- round(mean(data$Number.of.sexual.partners, na.rm = TRUE))
+data$First.sexual.intercourse[is.na(data$First.sexual.intercourse)] <- round(mean(data$First.sexual.intercourse, na.rm = TRUE))
+data$Num.of.pregnancies[is.na(data$Num.of.pregnancies)] <- round(mean(data$Num.of.pregnancies, na.rm = TRUE))
+data$Smokes[is.na(data$Smokes)] <- Mode(data$Smokes, na.rm = TRUE)
+data$Number.of.sexual.partners[is.na(data$Number.of.sexual.partners)] <- Mode(data$Number.of.sexual.partners, na.rm = TRUE)
+data$First.sexual.intercourse[is.na(data$First.sexual.intercourse)] <- round(mean(data$First.sexual.intercourse, na.rm = TRUE))
+data$Num.of.pregnancies[is.na(data$Num.of.pregnancies)] <- Mode(data$Num.of.pregnancies, na.rm = TRUE)
+data$Smokes[is.na(data$Smokes)] <- Mode(data$Smokes, na.rm = TRUE)
+data$Smokes..years.[is.na(data$Smokes..years.)] <- round(mean(data$Smokes..years., na.rm = TRUE))
+data$Smokes..packs.year.[is.na(data$Smokes..packs.year.)] <- round(mean(data$Smokes..packs.year., na.rm = TRUE))
+data$Hormonal.Contraceptives..years.[is.na(data$Hormonal.Contraceptives..years.)] <- round(mean(data$Hormonal.Contraceptives..years., na.rm = TRUE))
+data$IUD..years.[is.na(data$IUD..years.)] <- round(mean(data$IUD..years., na.rm = TRUE))
+data$STDs[is.na(data$STDs)] <- Mode(data$STDs, na.rm = TRUE)
+data$STDs..number.[is.na(data$STDs..number.)] <- Mode(data$STDs..number., na.rm = TRUE)
+data[,12:20][is.na(data[,12:20])] <- Mode(data$STDs, na.rm = TRUE)
+data$STDs[is.na(data$STDs)] <- Mode(data$STDs, na.rm = TRUE)
+data$Birth.control[is.na(data$Birth.control)] <- Mode(data$Birth.control)
+
+# changing the boolean variables to factors
+data[,c(5,10,12:19,21:29)] <- lapply(data[,c(5,10,12:19,21:29)], as.factor)
+```
+
+Using the equation $x = \frac{p(records)-rare}{1-p}$ where p is .20 to rebalance the data set per response variable.
+
+```{r rebalancing Hinselmann}
+p = .20
+records = as.integer(dim(data)[1])
+rare = table(data$Hinselmann)[2]
+resamp_times <- (p*records - rare)/(1-p)
+
+
+pos_hins <- which(data$Hinselmann == "Positive")
+resamp <- sample(pos_hins, size = resamp_times, replace = TRUE)
+resamp <- data[resamp,]
+
+rebal_hins_data <- rbind(data,resamp)
+table(rebal_hins_data$Hinselmann)[2]
+table(rebal_hins_data$Hinselmann)[2]/dim(rebal_hins_data)[1]
+```
+
+```{r rebalancing Schiller}
+p = .20
+records = as.integer(dim(data)[1])
+rare = table(data$Schiller)[2]
+resamp_times <- (p*records - rare)/(1-p)
+
+
+pos_schill <- which(data$Schiller == "Positive")
+resamp <- sample(pos_schill, size = resamp_times, replace = TRUE)
+resamp <- data[resamp,]
+
+rebal_schill_data <- rbind(data,resamp)
+table(rebal_schill_data$Schiller)[2]
+table(rebal_schill_data$Schiller)[2]/dim(rebal_schill_data)[1]
+```
+```{r rebalacing Citology}
+p = .20
+records = as.integer(dim(data)[1])
+rare = table(data$Citology)[2]
+resamp_times <- (p*records - rare)/(1-p)
+
+
+pos_cito <- which(data$Citology == "Positive")
+resamp <- sample(pos_cito, size = resamp_times, replace = TRUE)
+resamp <- data[resamp,]
+
+rebal_cito_data <- rbind(data,resamp)
+table(rebal_cito_data$Citology)[2]
+table(rebal_cito_data$Citology)[2]/dim(rebal_cito_data)[1]
+```
+
+```{r rebalacing Biopsy}
+p = .20
+records = as.integer(dim(data)[1])
+rare = table(data$Biopsy)[2]
+resamp_times <- (p*records - rare)/(1-p)
+
+
+pos_bio <- which(data$Biopsy == "Positive")
+resamp <- sample(pos_bio, size = resamp_times, replace = TRUE)
+resamp <- data[resamp,]
+
+rebal_bio_data <- rbind(data,resamp)
+table(rebal_bio_data$Biopsy)[2]
+table(rebal_bio_data$Biopsy)[2]/dim(rebal_bio_data)[1]
+```
+
+
+```{r EDA, fig.height=14, fig.width=14, warning=FALSE}
+
+# Histograms of data
+library(Hmisc)
+hist.data.frame(data[1:6], n.unique=1)
+hist.data.frame(data[7:12], n.unique=1)
+hist.data.frame(data[13:18], n.unique=1)
+hist.data.frame(data[19:25], n.unique=1)
+hist.data.frame(data[26:29], n.unique=1)
+
+# correlation plot for the numeric variables
+corrplot::corrplot(cor(data[,-c(5,10,12:19,21:29)]))
+
+# correlation plot for the boolean variables
+library(psych)
+test <- data[,c(5,10,12:19,21:29)]
+test <- test[,-c(15:18)]
+test <- data.frame(lapply(test, as.numeric))
+tetrachoric(test)
+```
+For the most part, random forest for classification has very similar properties to the regression analog discussed previously, including:  
+* The model is relatively insensitive to values of mtry.  
+* As with most trees, the data pre-processing requirements are minimal.  
+* Out-of-bag measures of performance can be calculated, including accuracy,  sensitivity, specificity, and confusion matrices. 
+
+
+
+```{r Logistic Regression Model}
+
+cancer_predictors <- c("Age", "Number.of.sexual.partners", "First.sexual.intercourse", "Num.of.pregnancies", 
+"Smokes", "STDs")
+
+predictor_df <- subset(data, select = cancer_predictors)
+
+logReg <- train(x = predictor_df, y = data$Schiller,
+               method = "glm",
+               preProcess = c("center","scale"))
+
+#raw coefficients
+data.frame(logReg$finalModel$coefficients)
+
+#odds ratios
+data.frame(exp(logReg$finalModel$coefficients))
+```
+
+
+
+```{r random forest model}
+
+
+
+```
+
